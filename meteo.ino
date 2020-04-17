@@ -1,5 +1,15 @@
 
-    #include <SimpleDHT.h>
+
+
+    #include <Wire.h>
+    #include <SPI.h>
+    #include <Adafruit_BME280.h>
+    
+    Adafruit_BME280 bme; // use I2C interface
+    Adafruit_Sensor *bme_temp = bme.getTemperatureSensor();
+    Adafruit_Sensor *bme_pressure = bme.getPressureSensor();
+    Adafruit_Sensor *bme_humidity = bme.getHumiditySensor();
+
     #include <avr/power.h>
     #include <avr/sleep.h>
     #include <avr/power.h>
@@ -10,8 +20,6 @@
 
     String SSID = "Martel";  // SSID du réseau Wi-Fi
     String PASS = "00000000"; // Mot de passe Wi-Fi
-    int pinDHT11 = 2;
-    SimpleDHT11 dht11;
     volatile int f_wdt = 1;
     unsigned int tempo_desiree = 280; // mettre un multiple de 8, mais pas obligatoire
     unsigned int compteur_reveil = 280;
@@ -19,6 +27,16 @@
 
     void setup() {
       pinMode( 13, OUTPUT);
+
+      if (!bme.begin()) {
+        Serial.println(F("Could not find a valid BME280 sensor, check wiring!"));
+        while (1) delay(10);
+      }
+  
+      bme_temp->printSensorDetails();
+      bme_pressure->printSensorDetails();
+      bme_humidity->printSensorDetails();
+      
       softSerial.begin(115200); // baudrate par défaut de l'ESP8266
       delay(100);
       // on demande à utiliser un baudrate inférieur
@@ -28,9 +46,9 @@
       softSerial.begin(9600);*/
 
       //Optimisation de la consommation
-      power_adc_disable(); // Convertisseur Analog / Digital pour les entrées analogiques
-      power_spi_disable();
-      power_twi_disable();
+      //power_adc_disable(); // Convertisseur Analog / Digital pour les entrées analogiques
+      //power_spi_disable();
+      //power_twi_disable();
       // Si pas besoin de communiquer par l'USB
       power_usart0_disable();
       //Extinction des timers, attention timer0 utilisé par millis ou delay
@@ -87,19 +105,21 @@
           digitalWrite(13, HIGH);
 
           connectWifi();
+          //sendValue("test", "auie");
+          
+          sensors_event_t temp_event, pressure_event, humidity_event;
+          bme_temp->getEvent(&temp_event);
+          bme_pressure->getEvent(&pressure_event);
+          bme_humidity->getEvent(&humidity_event);
 
-
-          byte temperature = 0;
-          byte humidity = 0;
-          if (dht11.read(pinDHT11, &temperature, &humidity, NULL)) {
-            return;
-          }
-
-          String temperature_string = String(temperature);
+          String temperature_string = String(temp_event.temperature);
           sendValue("temperature", temperature_string);
 
-          String humidity_string = String(humidity);
+          String humidity_string = String(humidity_event.relative_humidity);
           sendValue("humidity", humidity_string);
+
+          String pressure_string = String(pressure_event.pressure);
+          sendValue("pressure", pressure_string);
 
           softSerial.println("AT+CWQAP");
           compteur_reveil = 0;
@@ -129,9 +149,8 @@
     }
 
 
-    void sendValue(String metric, String value) {
-
-
+void sendValue(String metric, String value)
+{
       // mode "connexions multiples"
       softSerial.println("AT+CIPMUX=1");
       delay(2000);
@@ -158,6 +177,7 @@
 
       // on ferme la connexion
       softSerial.println("AT+CIPCLOSE=4");
+      delay(1000);
     }
    
    
